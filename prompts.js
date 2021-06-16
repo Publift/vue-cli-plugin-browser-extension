@@ -28,14 +28,19 @@ module.exports = [
         short: 'content scripts'
       },
       {
+        name: 'Override Page',
+        value: 'override',
+        short: 'override'
+      },
+      {
         name: 'Standalone Tab',
         value: 'standalone',
         short: 'standalone'
-      // },
-      // {
-      //   name: 'Dev Tools Tab',
-      //   value: 'devTools',
-      //   short: 'dev tools'
+      },
+      {
+        name: 'Dev Tools Tab',
+        value: 'devtools',
+        short: 'dev tools'
       }
     ],
     filter: async (input) => {
@@ -49,33 +54,9 @@ module.exports = [
     }
   },
   {
-    name: 'api',
-    type: 'list',
-    default: 'browser',
-    message: 'Which extension API do you wish to use?',
-    choices: [
-      {
-        name: 'browser (WebExtension)',
-        value: 'browser'
-      },
-      {
-        name: 'chrome',
-        value: 'chrome'
-      }
-    ]
-  },
-  {
-    name: 'usePolyfill',
+    name: 'generateSigningKey',
     type: 'confirm',
-    message: 'Add WebExtension polyfill?',
-    default: true,
-    when: answers => answers.api === 'browser'
-  },
-  {
-    name: 'autoImportPolyfill',
-    type: 'confirm',
-    message: 'Make polyfill available without import?',
-    default: true,
-    when: answers => answers.usePolyfill
+    message: 'Generate a new signing key (danger)?',
+    default: false
   }
 ]

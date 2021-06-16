@@ -1,103 +1,106 @@
-const fs = require('fs')
-const path = require('path')
-const gitignoreSnippet = `
-# Vue Browser Extension Output
-*.pem
-*.pub
-*.zip
-/dist-zip
-`
+const { generateKey } = require('../lib/signing-key')
+const { renderDomain, renderGitignore, renderTs } = require('../lib/render')
 
 module.exports = (api, _options) => {
-  const options = Object.assign({}, _options)
-  options.componentOptions = {}
-  if (options.components.background) {
-    options.componentOptions.background = {
-      entry: 'src/background.js'
+  const browserExtension = Object.assign({}, _options)
+  delete browserExtension.registry
+  delete browserExtension.components
+  delete browserExtension.generateSigningKey
+
+  const hasRouter = api.hasPlugin('router')
+  const hasVuex = api.hasPlugin('vuex')
+  const hasTs = api.hasPlugin('typescript')
+  const hasLint = api.hasPlugin('eslint')
+  const fileExt = hasTs ? 'ts' : 'js'
+
+  browserExtension.componentOptions = {}
+  if (_options.components.background) {
+    browserExtension.componentOptions.background = {
+      entry: `src/background.${fileExt}`
     }
   }
-  if (options.components.contentScripts) {
-    options.componentOptions.contentScripts = {
+  if (_options.components.contentScripts) {
+    browserExtension.componentOptions.contentScripts = {
       entries: {
-        'content_scripts/content-script': ['src/content_scripts/content-script.js']
+        'content-script': [`src/content-scripts/content-script.${fileExt}`]
       }
     }
   }
 
-  const appRootPath = process.cwd()
-  const { name } = require(path.join(appRootPath, 'package.json'))
-  const eslintConfig = { env: { webextensions: true } }
   const pkg = {
     private: true,
     scripts: {
-      'serve': 'vue-cli-service build --mode development --watch'
+      serve: 'vue-cli-service build --mode development --watch'
     },
-    dependencies: {
-      'vue-router': '^3.0.1',
-      'vuex': '^3.0.1'
-    },
+    devDependencies: {},
     vue: {
       pages: {},
-      pluginOptions: {
-        browserExtension: options
-      }
+      pluginOptions: { browserExtension }
     }
   }
-
-  if (options.usePolyfill) {
-    pkg.dependencies['webextension-polyfill'] = '^0.3.0'
-    pkg.devDependencies = {
-      'imports-loader': '^0.8.0'
-    }
+  if (hasLint) {
+    pkg.eslintConfig = { env: { webextensions: true } }
   }
-
-  if (api.hasPlugin('eslint')) {
-    console.log('Adding eslint config stuffs')
-    pkg.eslintConfig = eslintConfig
+  if (hasTs) {
+    pkg.devDependencies['@types/firefox-webext-browser'] = '^67.0.2'
   }
-
   api.extendPackage(pkg)
-  api.render('./template/base-app', { name, ...options })
+
+  const { name, description } = require(api.resolve('package.json'))
+  const options = Object.assign({}, _options)
+  options.name = name
+  options.description = description
+  options.hasRouter = hasRouter
+  options.hasVuex = hasVuex
+  options.hasTs = hasTs
+  options.hasLint = hasLint
+  options.fileExt = fileExt
+
+  api.render('./template/base-app', options)
+  const additionalFiles = { './src/components/HelloWorld.vue': `./template/HelloWorld.${fileExt}.vue` }
 
   if (options.components.background) {
-    api.render('./template/background', { name, ...options })
-  }
-
-  if (options.components.popup) {
-    api.render('./template/popup', { name, ...options })
-
-    pkg.vue.pages['popup/popup'] = {
-      entry: 'src/popup/popup.js',
-      title: 'Popup'
-    }
-  }
-
-  if (options.components.options) {
-    api.render('./template/options', { name, ...options })
-
-    pkg.vue.pages['options/options'] = {
-      entry: 'src/options/options.js',
-      title: 'Options'
-    }
-  }
-
-  if (options.components.standalone) {
-    console.log('Generating standalone app')
-    api.render('./template/standalone', { name, ...options })
-
-    pkg.vue.pages['standalone/standalone'] = {
-      entry: 'src/standalone/standalone.js',
-      filename: 'app.html',
-      title: name
-    }
+    additionalFiles[`./src/background.${fileExt}`] = './template/background/src/background.js'
   }
 
   if (options.components.contentScripts) {
-    api.render('./template/content-script', { ...options })
+    additionalFiles[`./src/content-scripts/content-script.${fileExt}`] =
+      './template/content-scripts/src/content-scripts/content-script.js'
+  }
+
+  api.render(additionalFiles, options)
+
+  if (options.components.popup) {
+    renderDomain({ title: 'Popup', fileExt, options, api, hasMinimumSize: true })
+  }
+
+  if (options.components.options) {
+    renderDomain({ title: 'Options', fileExt, options, api, hasMinimumSize: true })
+  }
+
+  if (options.components.override) {
+    renderDomain({ title: 'Override', fileExt, options, api })
+  }
+
+  if (options.components.standalone) {
+    renderDomain({ title: 'Standalone', filename: 'index.html', fileExt, options, api })
+  }
+
+  if (options.components.devtools) {
+    renderDomain({ title: 'Devtools', fileExt, options, api })
+  }
+
+  if (options.generateSigningKey === true) {
+    api.render((files) => {
+      files['key.pem'] = generateKey()
+    })
   }
 
   api.onCreateComplete(() => {
-    const gitignore = fs.readFileSync(api.resolve('./.gitignore'), 'utf8')
-    fs.writeFileSync(api.resolve('./.gitignore'), gitignore + gitignoreSnippet)
+    renderGitignore(api)
+
+    if (hasTs) {
+      renderTs(api)
+    }
   })
 }
